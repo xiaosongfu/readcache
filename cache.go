@@ -45,16 +45,16 @@ func MustInit(redisIp string, redisPort, redisDbNum int, memoryCacheCheckInterva
 // 返回值 err 说明：
 // 		err != nil 就说明 发生错误 或 没有读到值
 // 		err == nil 就说明 一切正常 并且 成功读到值
-func Get[V any](k string, loadDataFromDbFunc *func(k string) (V, error)) (V, error) {
+func Get[V any](k string, loadDataFromDbFunc *func(k string) (*V, error)) (*V, error) {
 	// STEP1: 先从内存缓存中读取值
 	value, err := memCache.Get(nil, k)
 	if err == nil && value != nil { // CASE1: 内存缓存中有就直接返回
-		v, ok := value.(V)
+		v, ok := value.(*V)
 		if !ok {
 			return nil, err
 		}
 
-		log.Debug().Msgf("get key[%s] from memory cache success")
+		log.Debug().Msgf("get key[%s] from memory cache success", k)
 		return v, nil
 	} else { // STEP2: 内存缓存中没有再从二级缓存中读取
 		value, err = redisCache.Get(nil, k)
@@ -66,13 +66,13 @@ func Get[V any](k string, loadDataFromDbFunc *func(k string) (V, error)) (V, err
 			}
 
 			// 二级中有就需要写会内存缓存
-			err = memCache.Put(nil, k, v, time.Second)
+			err = memCache.Put(nil, k, &v, time.Second)
 			if err != nil {
 				log.Error().Msgf("get key[%s] from redis cache success,but write back to memory cache error: %s", k, err.Error())
 			}
 
-			log.Debug().Msgf("get key[%s] from redis cache success")
-			return v, nil
+			log.Debug().Msgf("get key[%s] from redis cache success", k)
+			return &v, nil
 		} else { // STEP3+CASE3: 内存缓存和二级缓存中都没有就从 db 读取数据并写回 cache
 			if loadDataFromDbFunc == nil {
 				return nil, fmt.Errorf("key[%s] not exist in cache", k)
@@ -90,12 +90,12 @@ func Get[V any](k string, loadDataFromDbFunc *func(k string) (V, error)) (V, err
 				// 如果没有读到值就需要去读 db 并写回缓存
 				// <------ 因为当缓存中没有值，又有很多并发访问时可能回重复从 db 中加载数据，此处就是为了避免重复从 db 加载数据
 				if value, err = memCache.Get(nil, k); err == nil && value != nil {
-					v, ok := value.(V)
+					v, ok := value.(*V)
 					if !ok {
 						return nil, err
 					}
 
-					log.Debug().Msgf("get key[%s] from memory cache directly success when got mutex lock, so doesn't need to read db")
+					log.Debug().Msgf("get key[%s] from memory cache directly success when got mutex lock, so doesn't need to read db", k)
 					return v, nil
 					// ! 这段代码和上面的重复了 !
 				}
@@ -122,13 +122,13 @@ func Get[V any](k string, loadDataFromDbFunc *func(k string) (V, error)) (V, err
 
 // Put 设置值
 // TODO 不要范型也可以吗？？
-func Put[V any](k string, v V, timeout time.Duration) error {
+func Put[V any](k string, v *V, timeout time.Duration) error {
 	err := memCache.Put(nil, k, v, timeout)
 	if err != nil {
 		return err
 	}
 
-	value, err := marshal(v)
+	value, err := marshal(*v)
 	if err != nil {
 		return err
 	}
