@@ -48,8 +48,8 @@ func MustInit(redisIp string, redisPort, redisDbNum int, memoryCacheCheckInterva
 func Get[V any](k string, loadDataFromDbFunc *func(k string) (*V, error)) (*V, error) {
 	// STEP1: 先从内存缓存中读取值
 	value, err := memCache.Get(nil, k)
-	if err == nil && value != nil { // CASE1: 内存缓存中有就直接返回
-		v, ok := value.(*V)
+	if err == nil { // CASE1: 内存缓存中有值就直接返回 (值可以是nil)
+		v, ok := value.(*V) // value 是 nil 时也可以正常进行类型转换
 		if !ok {
 			return nil, err
 		}
@@ -58,14 +58,14 @@ func Get[V any](k string, loadDataFromDbFunc *func(k string) (*V, error)) (*V, e
 		return v, nil
 	} else { // STEP2: 内存缓存中没有再从二级缓存中读取
 		value, err = redisCache.Get(nil, k)
-		if err == nil && value != nil { // CASE2: 二级缓存中读取到值就返回它并将它写回内存缓存
+		if err == nil && value != nil { // CASE2: 二级缓存中读取到值就返回它并将它写回内存缓存 (值不允许是nil)
 			var v V
-			err = unmarshal([]byte(fmt.Sprintf("%s", value)), &v)
+			err = unmarshal([]byte(fmt.Sprintf("%s", value)), &v) // 转换 value 为 string 类型，因为存到 redis 中的值都是 string 类型，而且值不可能是 nil
 			if err != nil {
 				return nil, err
 			}
 
-			// 二级中有就需要写会内存缓存
+			// 二级中有就需要写回内存缓存
 			err = memCache.Put(nil, k, &v, time.Second)
 			if err != nil {
 				log.Error().Msgf("get key[%s] from redis cache success,but write back to memory cache error: %s", k, err.Error())
@@ -107,6 +107,9 @@ func Get[V any](k string, loadDataFromDbFunc *func(k string) (*V, error)) (*V, e
 					return nil, err
 				}
 
+				// loadDataFromDbFunc() 返回的 v 有可能是 nil, 但只要 err 是 nil 就表示调用成功, 可以正常使用 v
+				// Put() 方法内部会正确处理 v 是 nil 的情况；此时 Get() 方法也应该要正常返回值是 nil 的 v
+
 				// 写回 cache
 				err = Put[V](k, v, defaultTimeout)
 				if err != nil {
@@ -121,20 +124,24 @@ func Get[V any](k string, loadDataFromDbFunc *func(k string) (*V, error)) (*V, e
 }
 
 // Put 设置值
+// 要设置的值是 nil 时只能写到内存缓存，不允许写到 redis 缓存
 // TODO 不要范型也可以吗？？
 func Put[V any](k string, v *V, timeout time.Duration) error {
-	err := memCache.Put(nil, k, v, timeout)
+	err := memCache.Put(nil, k, v, timeout) // (值可以是nil)
 	if err != nil {
 		return err
 	}
 
-	value, err := marshal(*v)
-	if err != nil {
-		return err
-	}
-	err = redisCache.Put(nil, k, string(value), timeout)
-	if err != nil {
-		return err
+	// v 是 nil 时不允许写到 redis 缓存
+	if v != nil {
+		value, err := marshal(*v)
+		if err != nil {
+			return err
+		}
+		err = redisCache.Put(nil, k, string(value), timeout) // (值不允许是nil)
+		if err != nil {
+			return err
+		}
 	}
 
 	log.Debug().Msgf("put key[%s] to cache success", k)
