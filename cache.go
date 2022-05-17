@@ -47,8 +47,8 @@ func MustInit(redisIp string, redisPort, redisDbNum int, memoryCacheCheckInterva
 // 		err == nil 就说明 一切正常 并且 成功读到值
 func Get[V any](k string, loadDataFromDbFunc *func(k string) (*V, error)) (*V, error) {
 	// STEP1: 先从内存缓存中读取值
-	value, err := memCache.Get(nil, k)
-	if err == nil { // CASE1: 内存缓存中有值就直接返回 (值可以是nil)
+	value, err := memCache.Get(nil, k) // 如果 k 不存在不会返回 nil 而是返回 error：`ERROR-4002015, the key isn't exist`
+	if err == nil {                    // CASE1: 内存缓存中有值就直接返回 (值可以是nil)
 		v, ok := value.(*V) // value 是 nil 时也可以正常进行类型转换
 		if !ok {
 			return nil, err
