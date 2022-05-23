@@ -25,6 +25,28 @@ func TestMarshalString(t *testing.T) {
 	// 可以对基本类型进行 json 序列化
 }
 
+func TestMarshalNil(t *testing.T) {
+	type nilable struct {
+		name string
+	}
+
+	var n1 *nilable = nil
+	d, err := json.Marshal(n1)
+	if err != nil {
+		t.Error(err)
+	}
+	t.Log(string(d)) // null
+
+	var n2 nilable
+	err = json.Unmarshal(d, &n2)
+	if err != nil {
+		t.Error(err)
+	}
+	t.Log(n2) // {} 这个是对应 struct 类型的零值
+
+	// 可以对基本类型进行 json 序列化
+}
+
 func TestNilTypeCase(t *testing.T) {
 	type Nilable struct {
 		name string

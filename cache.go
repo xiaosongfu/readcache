@@ -51,7 +51,7 @@ func Get[V any, LPARAM any](k string, loadDataParam LPARAM, loadDataFunc *func(k
 	if err == nil {                    // CASE1: 内存缓存中有值就直接返回 (值可以是nil)
 		v, ok := value.(*V) // value 是 nil 时也可以正常进行类型转换
 		if !ok {
-			return nil, err
+			return nil, fmt.Errorf("get key[%s] from memory cache success,but value's type is not match", k)
 		}
 
 		log.Debug().Msgf("get key[%s] from memory cache success", k)
@@ -92,7 +92,7 @@ func Get[V any, LPARAM any](k string, loadDataParam LPARAM, loadDataFunc *func(k
 				if value, err = memCache.Get(nil, k); err == nil && value != nil {
 					v, ok := value.(*V)
 					if !ok {
-						return nil, err
+						return nil, fmt.Errorf("get key[%s] from memory cache success,but value's type is not match", k)
 					}
 
 					log.Debug().Msgf("get key[%s] from memory cache directly success when got mutex lock, so doesn't need to read db", k)
