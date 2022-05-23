@@ -45,7 +45,7 @@ func MustInit(redisIp string, redisPort, redisDbNum int, memoryCacheCheckInterva
 // 返回值 err 说明：
 // 		err != nil 就说明 发生错误 或 没有读到值
 // 		err == nil 就说明 一切正常 并且 成功读到值
-func Get[V any](k string, loadDataFromDbFunc *func(k string) (*V, error)) (*V, error) {
+func Get[V any, LPARAM any](k string, loadDataParam LPARAM, loadDataFunc *func(k string, loadParam LPARAM) (*V, error)) (*V, error) {
 	// STEP1: 先从内存缓存中读取值
 	value, err := memCache.Get(nil, k) // 如果 k 不存在不会返回 nil 而是返回 error：`ERROR-4002015, the key isn't exist`
 	if err == nil {                    // CASE1: 内存缓存中有值就直接返回 (值可以是nil)
@@ -74,7 +74,7 @@ func Get[V any](k string, loadDataFromDbFunc *func(k string) (*V, error)) (*V, e
 			log.Debug().Msgf("get key[%s] from redis cache success", k)
 			return &v, nil
 		} else { // STEP3+CASE3: 内存缓存和二级缓存中都没有就从 db 读取数据并写回 cache
-			if loadDataFromDbFunc == nil {
+			if loadDataFunc == nil {
 				return nil, fmt.Errorf("key[%s] not exist in cache", k)
 			} else {
 				log.Debug().Msgf("key[%s] not exist in cache, now reading from database and then write back to cache", k)
@@ -102,7 +102,7 @@ func Get[V any](k string, loadDataFromDbFunc *func(k string) (*V, error)) (*V, e
 				// TODO 可以这样写吗？
 
 				// 从 db 中读取
-				v, err := (*loadDataFromDbFunc)(k)
+				v, err := (*loadDataFunc)(k, loadDataParam)
 				if err != nil {
 					return nil, err
 				}
@@ -121,6 +121,11 @@ func Get[V any](k string, loadDataFromDbFunc *func(k string) (*V, error)) (*V, e
 			}
 		}
 	}
+}
+
+// GetWithLoadNil 读取值，loadDataFunc 使用 nil，即是缓存中没有时就直接返回 nil，不再调用 loadDataFunc 从其他数据源读取数据
+func GetWithLoadNil[V any](k string) (*V, error) {
+	return Get[V, struct{}](k, struct{}{}, nil)
 }
 
 // Put 设置值
